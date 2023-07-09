@@ -26,7 +26,7 @@ class IngetionPipeline:
     channel_id: str
 
     # get the channel id for a specified channel
-    # if the channel is not found or invalid raise a value error
+
     def _fetch_channel_id(self, channel_name: str):
         print(f"Fetching channel id for {channel_name}....")
         response = self.youtube.search().list(
@@ -99,7 +99,7 @@ class IngetionPipeline:
 
     # create a knowlege base to perform similarity search
 
-    def _create_knowledge_base(self, data, embeddings):
+    def _create_knowledge_base(self, data, embeddings) -> FAISS:
         kb = FAISS.from_texts(
             texts=data,
             embedding=embeddings
@@ -107,20 +107,31 @@ class IngetionPipeline:
         kb.save_local(folder_path=const.kb_folder_path,
                       index_name=self.channel_id)
         print(f"Knowledge Base created")
+        return kb
 
     # get the knowledge base from the ingestion pipeline
 
-    def get_knowlege_base(self) -> FAISS:
+    def _get_knowlege_base(self) -> FAISS:
         embedding = self._get_embeddings()
-        return FAISS.load_local(folder_path=const.kb_folder_path, index_name=self.channel_id, embeddings=embedding)
+        return FAISS.load_local(
+            folder_path=const.kb_folder_path,
+            index_name=self.channel_id,
+            embeddings=embedding
+        )
+
+    # check if knowlege base is already created
+    def _is_knowledge_base_cached(self):
+        return os.path.exists(const.kb_folder_path+f"/{self.channel_id}.faiss")
 
     # run the ingestion pipeline to cache the data source
-    def run(self, channel_name: str):
+    def run(self, channel_name: str) -> FAISS:
         # get the channel id for the channel
         self._fetch_channel_id(channel_name)
         if self.channel_id == const.invalid_channel_d:
             raise ValueError
-        print(f"channel id is {self.channel_id}")
+        print(f"Channel id is {self.channel_id}")
+        if self._is_knowledge_base_cached():
+            return self._get_knowlege_base()
         self._get_channel_videos()
         print(f"Total videos in channel {len(self.video_id_list)}")
         print(f"Fetching transcript for all videos....")
@@ -134,7 +145,7 @@ class IngetionPipeline:
         chunks = self._split_transcript_into_chunks()
         print(f"Number of chunks in transcript {len(chunks)}")
         embeddings = self._get_embeddings()
-        self._create_knowledge_base(
+        return self._create_knowledge_base(
             data=chunks,
             embeddings=embeddings
         )
